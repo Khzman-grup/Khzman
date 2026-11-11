@@ -98,9 +98,6 @@ h2{font-family:var(--display);font-weight:600;font-size:1.05rem;margin:22px 0 8p
 .saved{font-size:.78rem;opacity:.85}
 .tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
 </style>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <div id="app"></div>
@@ -119,12 +116,17 @@ var firebaseConfig = {
 };
 /* یوزەرنەیم دەبێتە ئیمەیڵی ناوخۆیی: ahmad → ahmad@khizman.app */
 var USER_DOMAIN = "khizman.app";
+/* ناوی داتابەیسی Firestore (لە کۆنسۆڵ: Database default) */
+var DATABASE_ID = "default";
 </script>
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 (function(){
-firebase.initializeApp(firebaseConfig);
-var auth=firebase.auth(), db=firebase.firestore();
-var DOC=db.collection('app').doc('state');
+var app=initializeApp(firebaseConfig);
+var auth=getAuth(app), db=getFirestore(app, DATABASE_ID);
+var DOC=doc(db,'app','state');
 
 function pad(n){return (n<10?'0':'')+n}
 function todayStr(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
@@ -152,7 +154,7 @@ function checkAdvance(){var cur=S.months[S.current];if(cur&&totals(cur).done){va
 var saveTimer=null;
 function change(){render();clearTimeout(saveTimer);ui.saving=true;setHdr();saveTimer=setTimeout(save,700)}
 function save(){
-  DOC.set(JSON.parse(JSON.stringify(S))).then(function(){ui.saving=false;setHdr()})
+  setDoc(DOC,JSON.parse(JSON.stringify(S))).then(function(){ui.saving=false;setHdr()})
   .catch(function(e){ui.saving=false;ui.toast=e.code==='permission-denied'?'مافی دەستکاریکردنت نییە':'پاشەکەوت نەکرا، ئینتەرنێت بپشکنە';render()});
 }
 function setHdr(){var el=document.getElementById('savest');if(el)el.textContent=ui.saving?'پاشەکەوت دەکرێت…':'پاشەکەوت کراوە ✓'}
@@ -229,21 +231,22 @@ function render(){
 
 /* ---------- auth ---------- */
 var unsub=null;
-auth.onAuthStateChanged(function(u){
+onAuthStateChanged(auth,function(u){
   if(unsub){unsub();unsub=null}
   if(!u){ui.view='login';S=null;render();return}
   ui.user=(u.email||'').split('@')[0];
-  db.collection('User').doc(u.uid).get().then(function(r){
-    if(!r.exists){ui.err='ئەم ئەکاونتە ڕێگەپێدراو نییە';auth.signOut();return}
+  var timer=setTimeout(function(){if(ui.view==='loading'){ui.err='پەیوەندی بە داتابەیسەوە نەکرا (timeout)';signOut(auth)}},15000);
+  getDoc(doc(db,'User',u.uid)).then(function(r){
+    if(!r.exists()){clearTimeout(timer);ui.err='ئەم ئەکاونتە ڕێگەپێدراو نییە';signOut(auth);return}
     ui.admin=r.data().role==='admin';
-    unsub=DOC.onSnapshot(function(snap){
+    unsub=onSnapshot(DOC,function(snap){clearTimeout(timer);
       if(ui.saving)return; /* don't overwrite local edits mid-save */
-      S=norm(snap.exists?snap.data():null);
-      if(!snap.exists&&ui.admin){S.months[S.current]=newMonth();DOC.set(S)}
+      S=norm(snap.exists()?snap.data():null);
+      if(!snap.exists()&&ui.admin){S.months[S.current]=newMonth();setDoc(DOC,S)}
       if(!S.months[ui.sel]&&ui.view!=='app')ui.sel=S.months[ymNow()]?ymNow():S.current;
       ui.view='app';render();
-    },function(){ui.err='ناتوانرێت داتاکان بخوێنرێنەوە';auth.signOut()});
-  }).catch(function(){ui.err='ناتوانرێت داتاکان بخوێنرێنەوە';auth.signOut()});
+    },function(e){clearTimeout(timer);ui.err='ناتوانرێت داتاکان بخوێنرێنەوە ('+(e&&e.code||'')+')';signOut(auth)});
+  }).catch(function(e){clearTimeout(timer);ui.err='ناتوانرێت داتاکان بخوێنرێنەوە ('+(e&&e.code||'')+')';signOut(auth)});
 });
 
 document.addEventListener('submit',function(e){
@@ -251,7 +254,7 @@ document.addEventListener('submit',function(e){
     var u=document.getElementById('lu').value.trim().toLowerCase(),p=document.getElementById('lp').value;
     var email=u.indexOf('@')>-1?u:u+'@'+USER_DOMAIN;
     var b=document.getElementById('lbtn');b.disabled=true;b.textContent='…';
-    auth.signInWithEmailAndPassword(email,p).then(function(){ui.err=''}).catch(function(){ui.err='ناوی بەکارهێنەر یان وشەی نهێنی هەڵەیە';render()});
+    signInWithEmailAndPassword(auth,email,p).then(function(){ui.err=''}).catch(function(e){ui.err=(e&&(e.code==='auth/invalid-credential'||e.code==='auth/wrong-password'||e.code==='auth/user-not-found'))?'ناوی بەکارهێنەر یان وشەی نهێنی هەڵەیە':'هەڵە: '+(e&&e.code||'');render()});
     return}
   if(e.target.id==='addf'&&ui.admin){e.preventDefault();
     var names=document.getElementById('nname').value.split(/[\n,،]+/).map(function(x){return x.trim()}).filter(Boolean);
@@ -264,7 +267,7 @@ document.addEventListener('submit',function(e){
     ui.toast=kd(names.length)+' ناو زیاد کرا';ui.showAdd=false;change()}
 });
 document.addEventListener('click',function(e){
-  if(e.target.id==='logout'){auth.signOut();return}
+  if(e.target.id==='logout'){signOut(auth);return}
   var t=e.target.closest('[data-tab]');if(t){ui.tab=t.dataset.tab;render();return}
   if(!ui.admin)return;
   if(e.target.closest('#toggleadd')){ui.showAdd=!ui.showAdd;render();var nn=document.getElementById('nname');if(nn)nn.focus();return}
