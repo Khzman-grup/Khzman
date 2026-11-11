@@ -151,6 +151,35 @@ tfoot td{font-weight:800;background:var(--brand-soft);border-bottom:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:11px 18px;border-radius:12px;z-index:30;max-width:90vw;text-align:center;box-shadow:var(--shadow);font-size:.9rem}
 @media (max-width:400px){.totals{grid-template-columns:1fr 1fr}.totals .tot.all{grid-column:1/-1}.ed{grid-template-columns:1fr 1fr}.ed label:first-child{grid-column:1/-1}.summary{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:no-preference){.tab,.status,.btn{transition:background .15s,color .15s}}
+
+.rpick{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.rpick .mselect{flex:1}
+.stmt{background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:16px;margin-bottom:6px}
+.st-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border-bottom:2px solid var(--brand);padding-bottom:10px;margin-bottom:10px}
+.st-org{font-size:.8rem;color:var(--muted)}
+.st-title{font-family:var(--display);font-weight:800;font-size:1.15rem}
+.st-date{font-size:.75rem;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.st-meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.82rem;color:var(--muted);margin-bottom:10px}
+.st-meta b{color:var(--fg)}
+.st-table{font-size:.82rem}
+.st-table th,.st-table td{padding:7px 8px}
+.st-sum{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
+.st-line{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:.9rem;border-bottom:1px dashed var(--line)}
+.st-line b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.st-line.muted{color:var(--muted)}
+.st-line.grand{border:0;margin-top:6px;background:var(--brand);color:#fff;border-radius:10px;padding:10px 12px;font-weight:800}
+.st-words{font-size:.82rem;color:var(--gold);margin-top:6px;text-align:left}
+@media print{
+  @page{size:A4;margin:14mm}
+  :root{--bg:#fff;--card:#fff;--fg:#000;--muted:#444;--line:#bbb;--brand:#0e5a4a;--paid:#1c7a49;--due:#b9442f;--gold:#7a5a12;--shadow:none}
+  body{background:#fff!important;color:#000}
+  header.top,.tabs,.noprint,.toast,.addbtn{display:none!important}
+  .wrap{margin:0!important;padding:0!important;max-width:none}
+  .stmt{box-shadow:none;border:0;padding:0}
+  .scroll{overflow:visible}
+  .st-table th,.st-table td{white-space:normal;border-bottom:1px solid #bbb}
+  .st-line.grand{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 </style>
 </head>
 <body>
@@ -195,7 +224,7 @@ function uid(){return 'm'+Date.now().toString(36)+Math.random().toString(36).sli
 
 var S=null;
 try{var th=localStorage.getItem('khz-theme');if(th)document.documentElement.setAttribute('data-theme',th)}catch(e){}
-var ui={open:null,view:'loading',tab:'month',sel:ymNow(),admin:false,armed:null,toast:'',showAdd:false,temp:{},err:'',saving:false,user:''};
+var ui={rsel:null,open:null,view:'loading',tab:'month',sel:ymNow(),admin:false,armed:null,toast:'',showAdd:false,temp:{},err:'',saving:false,user:''};
 
 function norm(x){x=x||{};x.members=x.members||[];x.months=x.months||{};if(!x.current)x.current=ymNow();x.prev=+x.prev||0;return x}
 
@@ -286,18 +315,40 @@ function treasuryView(){
   h+='<p class="note">«پارەی پێشوو» ئەو پارەیەیە کە پێش ئەم ئەپە کۆکراوەتەوە'+(A?'؛ ژمارەکە بنووسە، خۆکارانە پاشەکەوت دەبێت.':'.')+' «پارەی ئێستا» کۆی هەموو ئەو پارانەیە کە لە مانگەکاندا وەک «دراوە» تۆمار کراون.</p>';
   return h;
 }
+function statementView(){
+  var keys=Object.keys(S.months).sort();if(!keys.length)return '';
+  if(!ui.rsel||!S.months[ui.rsel]){var cand=keys.filter(function(k){return k<=ymNow()});ui.rsel=cand.length?cand[cand.length-1]:keys[keys.length-1]}
+  var k=ui.rsel,m=S.months[k],t=totals(m),prev=S.prev||0,before=0;
+  keys.forEach(function(x){if(x<k)before+=totals(S.months[x]).paid});
+  var grand=prev+before+t.paid;
+  var h='<div class="sec-title noprint">راپۆرتی مانگێک و چاپکردن</div>';
+  h+='<div class="card noprint rpick"><select id="rsel" class="mselect">'+keys.slice().reverse().map(function(x){return '<option value="'+x+'"'+(x===k?' selected':'')+'>'+label(x)+'</option>'}).join('')+'</select><button class="btn" id="print" type="button">🖨 چاپکردن</button></div>';
+  h+='<div id="stmt" class="stmt"><div class="st-head"><div><div class="st-org">گروپی هاوکاریی خزمان</div><div class="st-title">راپۆرتی '+label(k)+'</div></div><div class="st-date">'+clockText()+'</div></div>';
+  h+='<div class="st-meta"><span>ژمارەی ناوەکان: <b>'+kd(t.count)+'</b></span><span>پارەیان داوە: <b>'+kd(t.paidCount)+'</b></span><span>نەیانداوە: <b>'+kd(t.count-t.paidCount)+'</b></span></div>';
+  h+='<div class="scroll"><table class="st-table"><thead><tr><th>#</th><th>ناو</th><th>بڕی پارە</th><th>دۆخ</th><th>بەروار</th></tr></thead><tbody>'+
+    m.items.map(function(i,ix){return '<tr><td>'+kd(ix+1)+'</td><td>'+esc(i.name)+'</td><td>'+money(i.amount)+'</td><td class="'+(i.paid?'c-in':'c-out')+'">'+(i.paid?'دراوە':'نەدراوە')+'</td><td>'+(i.paid&&i.date?kd(i.date.split('-').reverse().join('/'))+(i.time?' · '+kd(i.time):''):'—')+'</td></tr>'}).join('')+
+    '</tbody></table></div>';
+  h+='<div class="st-sum">'+
+    '<div class="st-line"><span>پارەی پێشوو (خەزێنە)</span><b>'+money(prev)+'</b></div>'+
+    '<div class="st-line"><span>پارەی مانگەکانی پێشووتر (تۆمارکراو)</span><b>'+money(before)+'</b></div>'+
+    '<div class="st-line"><span>پارەی '+label(k)+'</span><b class="c-in">'+money(t.paid)+'</b></div>'+
+    (t.due?'<div class="st-line muted"><span>ماوەی ئەم مانگە (وەرنەگیراو)</span><b class="c-out">'+money(t.due)+'</b></div>':'')+
+    '<div class="st-line grand"><span>کۆی گشتی تا کۆتایی '+label(k)+'</span><b>'+money(grand)+'</b></div>'+
+    '<div class="st-words">'+moneyWords(grand)+'</div></div></div>';
+  return h;
+}
 function reportView(){
   var keys=Object.keys(S.months).sort(),all={paid:0,due:0},years={};
   var rows=keys.map(function(k){var t=totals(S.months[k]);all.paid+=t.paid;all.due+=t.due;
     var y=k.slice(0,4);years[y]=years[y]||{paid:0,due:0,months:0};years[y].paid+=t.paid;years[y].due+=t.due;years[y].months++;
     return '<tr><td>'+label(k)+'</td><td class="c-in">'+money(t.paid)+'</td><td>'+kd(t.paidCount)+' / '+kd(t.count)+'</td><td class="c-out">'+money(t.due)+'</td><td><span class="chip '+(t.done?'ok':'open')+'">'+(t.done?'تەواو':'کراوە')+'</span></td>'+(ui.admin?'<td><button class="del'+(ui.armed==='M:'+k?' arm':'')+'" data-delmonth="'+k+'" type="button">'+(ui.armed==='M:'+k?'دڵنیایت؟':'سڕینەوە')+'</button></td>':'')+'</tr>'}).reverse().join('');
-  var h='<div class="summary"><div class="tcard grand"><div class="lbl">کۆی گشتی وەرگیراو</div><b>'+money(all.paid)+'</b><span class="words">'+moneyWords(all.paid)+'</span></div>'+
+  var h=statementView()+'<div class="noprint"><div class="sec-title">کۆی هەموو مانگەکان</div><div class="summary"><div class="tcard grand"><div class="lbl">کۆی گشتی وەرگیراو</div><b>'+money(all.paid)+'</b><span class="words">'+moneyWords(all.paid)+'</span></div>'+
     '<div class="tcard"><div class="lbl">ماوە (وەرنەگیراو)</div><b style="color:var(--due)">'+money(all.due)+'</b></div></div>';
   h+='<div class="sec-title">راپۆرتی مانگانە</div><div class="tbl scroll"><table><thead><tr><th>مانگ</th><th>وەرگیراو</th><th>پارەدەر</th><th>ماوە</th><th>دۆخ</th>'+(ui.admin?'<th></th>':'')+'</tr></thead><tbody>'+rows+'</tbody>'+
     '<tfoot><tr><td>کۆی گشتی</td><td class="c-in">'+money(all.paid)+'</td><td></td><td class="c-out">'+money(all.due)+'</td><td colspan="'+(ui.admin?2:1)+'"></td></tr></tfoot></table></div>';
   h+='<div class="sec-title">راپۆرتی ساڵانە</div><div class="tbl scroll"><table><thead><tr><th>ساڵ</th><th>مانگ</th><th>وەرگیراو</th><th>ماوە</th></tr></thead><tbody>'+
     Object.keys(years).sort().reverse().map(function(y){var v=years[y];return '<tr><td><b>'+kd(y)+'</b></td><td>'+kd(v.months)+'</td><td class="c-in">'+money(v.paid)+'</td><td class="c-out">'+money(v.due)+'</td></tr>'}).join('')+
-    '</tbody></table></div>';
+    '</tbody></table></div></div>';
   return h;
 }
 function render(){
@@ -352,6 +403,7 @@ document.addEventListener('submit',function(e){
 document.addEventListener('click',function(e){
   if(e.target.closest('#theme')){var d=document.documentElement.getAttribute('data-theme');var dark=d?d==='dark':matchMedia('(prefers-color-scheme: dark)').matches;var nt=dark?'light':'dark';document.documentElement.setAttribute('data-theme',nt);try{localStorage.setItem('khz-theme',nt)}catch(x){}render();return}
   if(e.target.closest('#refresh')){location.reload();return}
+  if(e.target.id==='print'){window.print();return}
   if(e.target.id==='logout'){signOut(auth);return}
   var st=e.target.closest('[data-step]');if(st){var nk=+st.dataset.step>0?nextYm(ui.sel):prevYm(ui.sel);if(monthList().indexOf(nk)>-1){ui.sel=nk;ui.armed=null;ui.open=null;render()}return}
   var t=e.target.closest('[data-tab]');if(t){ui.tab=t.dataset.tab;render();return}
@@ -379,6 +431,7 @@ document.addEventListener('click',function(e){
 document.addEventListener('input',function(e){if(e.target.id==='prev'){var v=Math.max(0,+e.target.value||0),t=v+allPaid();var a=document.getElementById('prevw'),b=document.getElementById('totb'),c=document.getElementById('totw');if(a)a.textContent=moneyWords(v);if(b)b.textContent=money(t);if(c)c.textContent=moneyWords(t)}});
 document.addEventListener('change',function(e){
   var el=e.target;
+  if(el.id==='rsel'){ui.rsel=el.value;render();return}
   if(el.id==='msel'){ui.sel=el.value;ui.armed=null;ui.open=null;render();return}
   if(el.id==='imp'&&ui.admin&&el.files[0]){var r=new FileReader();r.onload=function(){try{S=norm(JSON.parse(r.result));ui.sel=S.months[ymNow()]?ymNow():S.current;ui.toast='داتاکان هاوردە کران';change()}catch(x){ui.toast='فایلەکە دروست نییە';render()}};r.readAsText(el.files[0]);return}
   if(el.id==='prev'&&ui.admin){S.prev=Math.max(0,+el.value||0);change();return}
