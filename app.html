@@ -28,7 +28,9 @@
   --paid:#5fcf8f; --paid-soft:#143022; --due:#ef8b77; --due-soft:#36201b;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25); color-scheme:dark}
 *{box-sizing:border-box}
-html,body{margin:0}
+html,body{margin:0;overflow-x:hidden;max-width:100%}
+.wrap>*{max-width:100%;min-width:0}
+.summary>*,.totals>*{min-width:0;overflow:hidden}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.6;direction:rtl;-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
@@ -296,7 +298,6 @@ function reportView(){
   h+='<div class="sec-title">راپۆرتی ساڵانە</div><div class="tbl scroll"><table><thead><tr><th>ساڵ</th><th>مانگ</th><th>وەرگیراو</th><th>ماوە</th></tr></thead><tbody>'+
     Object.keys(years).sort().reverse().map(function(y){var v=years[y];return '<tr><td><b>'+kd(y)+'</b></td><td>'+kd(v.months)+'</td><td class="c-in">'+money(v.paid)+'</td><td class="c-out">'+money(v.due)+'</td></tr>'}).join('')+
     '</tbody></table></div>';
-  if(ui.admin)h+='<div class="tools"><label class="btn ghost" for="imp">هاوردەکردنی داتا (data.json)</label><input id="imp" type="file" accept=".json,application/json" hidden></div>';
   return h;
 }
 function render(){
