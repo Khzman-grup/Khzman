@@ -97,6 +97,17 @@ h2{font-family:var(--display);font-weight:600;font-size:1.05rem;margin:22px 0 8p
 .out{font:inherit;font-size:.78rem;background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:999px;padding:3px 12px;cursor:pointer}
 .saved{font-size:.78rem;opacity:.85}
 .tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.clock{font-size:.8rem;font-variant-numeric:tabular-nums;opacity:.9}
+.dt{display:flex;flex-direction:column;gap:4px;min-width:130px}
+.treasury{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.treasury .total{grid-column:1/-1;background:var(--accent);border-color:var(--accent)}
+.treasury .total span,.treasury .total b{color:#fff}
+.treasury .total b{font-size:1.6rem}
+.treasury .stat b{font-size:1.25rem}
+.prevrow{display:flex;gap:6px;align-items:center;margin-top:4px}
+.prevrow input{width:100%;font-size:1.1rem;font-weight:700}
+.unit{font-size:.8rem;color:var(--muted)}
+@media (max-width:420px){.treasury{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -142,11 +153,14 @@ function uid(){return 'm'+Date.now().toString(36)+Math.random().toString(36).sli
 var S=null;
 var ui={view:'loading',tab:'month',sel:ymNow(),admin:false,armed:null,toast:'',showAdd:false,temp:{},err:'',saving:false,user:''};
 
-function norm(x){x=x||{};x.members=x.members||[];x.months=x.months||{};if(!x.current)x.current=ymNow();return x}
+function norm(x){x=x||{};x.members=x.members||[];x.months=x.months||{};if(!x.current)x.current=ymNow();x.prev=+x.prev||0;return x}
+function nowTime(){var d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes())}
+function clockText(){var d=new Date();return kd(pad(d.getHours())+':'+pad(d.getMinutes()))+' · '+kd(d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear())}
+function allPaid(){var p=0;Object.keys(S.months).forEach(function(k){p+=totals(S.months[k]).paid});return p}
 function newMonth(){return {items:S.members.map(function(m){return {id:m.id,name:m.name,amount:m.amount,paid:false,date:''}})}}
-function monthList(){var ks=Object.keys(S.months).sort();var hi=S.current;if(ks.length&&ks[ks.length-1]>hi)hi=ks[ks.length-1];if(ymNow()>hi)hi=ymNow();var lo=(+hi.slice(0,4)-1)+'-01';if(ks.length&&ks[0]<lo)lo=ks[0];var out=[],k=hi;while(k>=lo){out.push(k);k=prevYm(k)}return out}
-function curMonth(){return S.months[ui.sel]||(ui.temp[ui.sel]=ui.temp[ui.sel]||newMonth())}
-function materialize(){if(!S.months[ui.sel]){S.months[ui.sel]=curMonth();delete ui.temp[ui.sel]}}
+function monthList(){var ks=Object.keys(S.months).sort();var hi=ymNow();for(var i=0;i<12;i++)hi=nextYm(hi);if(ks.length&&ks[ks.length-1]>hi)hi=ks[ks.length-1];var lo=(+ymNow().slice(0,4)-1)+'-01';if(ks.length&&ks[0]<lo)lo=ks[0];var out=[],k=hi;while(k>=lo){out.push(k);k=prevYm(k)}return out}
+function curMonth(){return S.months[ui.sel]||{items:[]}}
+function materialize(){if(!S.months[ui.sel]){S.months[ui.sel]=newMonth()}}
 function totals(m){var t=0,p=0,n=0;m.items.forEach(function(i){t+=+i.amount||0;if(i.paid){p+=+i.amount||0;n++}});return {total:t,paid:p,due:t-p,count:m.items.length,paidCount:n,done:m.items.length>0&&n===m.items.length}}
 function checkAdvance(){var cur=S.months[S.current];if(cur&&totals(cur).done){var nx=nextYm(S.current);if(!S.months[nx])S.months[nx]=newMonth();var was=S.current;S.current=nx;ui.sel=nx;ui.toast=label(was)+' تەواو بوو، '+label(nx)+' کرایەوە'}}
 
@@ -170,7 +184,7 @@ function loginView(){
 function header(){
   return '<header class="top"><div class="in"><h1>گروپی هاوکاریی خزمان</h1><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
   (ui.admin?'<span class="saved" id="savest">پاشەکەوت کراوە ✓</span>':'')+
-  '<span class="role">'+esc(ui.user)+' · '+(ui.admin?'بەڕێوەبەر':'تەنها بینین')+'</span><button class="out" id="logout">چوونەدەرەوە</button></span></div></header>';
+  '<span class="clock" id="clock">'+clockText()+'</span><span class="role">'+esc(ui.user)+' · '+(ui.admin?'بەڕێوەبەر':'تەنها بینین')+'</span><button class="out" id="logout">چوونەدەرەوە</button></span></div></header>';
 }
 function monthView(){
   var m=curMonth(),t=totals(m),A=ui.admin,keys=monthList(),h='';
@@ -183,17 +197,17 @@ function monthView(){
   h+='<div class="monthbar"><label for="msel">مانگ</label><select id="msel" style="flex:1">'+
     keys.map(function(k){return '<option value="'+k+'"'+(k===ui.sel?' selected':'')+'>'+label(k)+(k===ymNow()?' (ئێستا)':(S.months[k]?'':' ·'))+'</option>'}).join('')+
     '</select><span class="chip '+(t.done?'ok':'open')+'">'+(t.done?'تەواو بوو':kd(t.paidCount)+' لە '+kd(t.count)+' دراوە')+'</span></div>';
-  h+='<div class="panel"><div class="scroll"><table><thead><tr><th class="rn">#</th><th>ناو</th><th class="num">بڕی پارە</th><th>بەروار</th><th>دۆخ</th>'+(A?'<th></th>':'')+'</tr></thead><tbody>';
-  if(!m.items.length)h+='<tr><td colspan="'+(A?6:5)+'" class="empty">هێشتا هیچ ناوێک زیاد نەکراوە.</td></tr>';
+  h+='<div class="panel"><div class="scroll"><table><thead><tr><th class="rn">#</th><th>ناو</th><th class="num">بڕی پارە</th><th>بەروار و کات</th><th>دۆخ</th>'+(A?'<th></th>':'')+'</tr></thead><tbody>';
+  if(!m.items.length)h+='<tr><td colspan="'+(A?6:5)+'" class="empty">'+(S.months[ui.sel]?'هێشتا هیچ ناوێک زیاد نەکراوە.':'ئەم مانگە هێشتا پڕ نەکراوەتەوە.'+(A&&S.members.length?'<br><br><button class="btn" id="fillmonth" type="button">پڕکردنەوەی ئەم مانگە بە ناوەکان</button>':''))+'</td></tr>';
   m.items.forEach(function(i,ix){
     h+='<tr class="'+(i.paid?'paid':'')+'"><td class="rn">'+(ix+1)+'</td><td class="name">'+esc(i.name)+'</td>';
     if(A){
       h+='<td class="num"><input id="amt-'+i.id+'" data-ix="'+ix+'" data-f="amount" type="number" inputmode="numeric" min="0" step="250" value="'+(+i.amount||0)+'" aria-label="بڕی پارە"></td>'+
-         '<td><input id="dt-'+i.id+'" data-ix="'+ix+'" data-f="date" type="date" value="'+esc(i.date||'')+'" aria-label="بەروار"></td>'+
+         '<td><div class="dt"><input id="dt-'+i.id+'" data-ix="'+ix+'" data-f="date" type="date" value="'+esc(i.date||'')+'" aria-label="بەروار"><input id="tm-'+i.id+'" data-ix="'+ix+'" data-f="time" type="time" value="'+esc(i.time||'')+'" aria-label="کات"></div></td>'+
          '<td><select id="st-'+i.id+'" data-ix="'+ix+'" data-f="paid" class="status '+(i.paid?'paid':'due')+'" aria-label="دۆخ"><option value="0"'+(i.paid?'':' selected')+'>نەدراوە</option><option value="1"'+(i.paid?' selected':'')+'>دراوە</option></select></td>'+
          '<td><button class="del'+(ui.armed===i.id?' arm':'')+'" data-del="'+i.id+'">'+(ui.armed===i.id?'دڵنیایت؟':'سڕینەوە')+'</button></td>';
     }else{
-      h+='<td class="num amt">'+money(i.amount)+'</td><td>'+(i.date||'—')+'</td><td class="ro-status '+(i.paid?'paid':'due')+'">'+(i.paid?'دراوە':'نەدراوە')+'</td>';
+      h+='<td class="num amt">'+money(i.amount)+'</td><td>'+(i.date?esc(i.date)+(i.time?' · '+esc(i.time):''):'—')+'</td><td class="ro-status '+(i.paid?'paid':'due')+'">'+(i.paid?'دراوە':'نەدراوە')+'</td>';
     }
     h+='</tr>';
   });
@@ -203,6 +217,15 @@ function monthView(){
      '<tr><td></td><td>ماوە</td><td class="num" style="color:var(--due)">'+money(t.due)+'</td><td colspan="'+c+'"></td></tr></tfoot></table></div></div>';
   if(A&&S.months[ui.sel])h+='<div class="delmonth"><button class="del'+(ui.armed==='M:'+ui.sel?' arm':'')+'" data-delmonth="'+ui.sel+'">'+(ui.armed==='M:'+ui.sel?'دڵنیایت؟ هەموو تۆمارەکانی '+label(ui.sel)+' دەسڕێنەوە':'سڕینەوەی '+label(ui.sel))+'</button></div>';
   if(A)h+='<p class="note">کاتێک هەمووان پارەکەیان دا، ئەم مانگە تەواو دەبێت و مانگی دواتر خۆکارانە دەکرێتەوە.</p>';
+  return h;
+}
+function treasuryView(){
+  var cur=allPaid(),prev=S.prev||0,A=ui.admin;
+  var h='<h2>خەزێنەی گشتی</h2><div class="treasury">';
+  h+='<div class="stat"><span>پارەی پێشوو</span>'+(A?'<div class="prevrow"><input id="prev" type="number" inputmode="numeric" min="0" step="250" value="'+prev+'" aria-label="پارەی پێشوو"><span class="unit">د.ع</span></div>':'<b>'+money(prev)+'</b>')+'</div>';
+  h+='<div class="stat g"><span>پارەی ئێستا (تۆمارکراو لێرە)</span><b>'+money(cur)+'</b></div>';
+  h+='<div class="stat total"><span>کۆی گشتی خەزێنە</span><b>'+money(prev+cur)+'</b></div></div>';
+  h+='<p class="note">«پارەی پێشوو» ئەو پارەیەیە کە پێش ئەم ئەپە کۆکراوەتەوە'+(A?'؛ ژمارەکە بنووسە و خۆکارانە پاشەکەوت دەبێت.':'.')+' «پارەی ئێستا» کۆی هەموو ئەو پارانەیە کە لە مانگەکاندا وەک «دراوە» تۆمار کراون.</p>';
   return h;
 }
 function reportView(){
@@ -223,7 +246,7 @@ function render(){
   var app=document.getElementById('app'),h;
   if(ui.view==='loading')h='<header class="top"><div class="in"><h1>گروپی هاوکاریی خزمان</h1></div></header><div class="wrap"><p class="empty">چاوەڕێ بکە…</p></div>';
   else if(ui.view==='login')h=loginView();
-  else h=header()+'<div class="wrap"><div class="tabs" role="tablist"><button class="tab" role="tab" data-tab="month" aria-selected="'+(ui.tab==='month')+'">مانگانە</button><button class="tab" role="tab" data-tab="report" aria-selected="'+(ui.tab==='report')+'">راپۆرت</button></div>'+(ui.tab==='month'?monthView():reportView())+'</div>';
+  else h=header()+'<div class="wrap"><div class="tabs" role="tablist"><button class="tab" role="tab" data-tab="month" aria-selected="'+(ui.tab==='month')+'">مانگانە</button><button class="tab" role="tab" data-tab="treasury" aria-selected="'+(ui.tab==='treasury')+'">خەزێنە</button><button class="tab" role="tab" data-tab="report" aria-selected="'+(ui.tab==='report')+'">راپۆرت</button></div>'+(ui.tab==='month'?monthView():ui.tab==='treasury'?treasuryView():reportView())+'</div>';
   if(ui.toast)h+='<div class="toast" role="status">'+esc(ui.toast)+'</div>';
   app.innerHTML=h;setHdr();
   if(ui.toast){var tt=ui.toast;setTimeout(function(){if(ui.toast===tt){ui.toast='';var el=document.querySelector('.toast');if(el)el.remove()}},3500)}
@@ -270,6 +293,7 @@ document.addEventListener('click',function(e){
   if(e.target.id==='logout'){signOut(auth);return}
   var t=e.target.closest('[data-tab]');if(t){ui.tab=t.dataset.tab;render();return}
   if(!ui.admin)return;
+  if(e.target.id==='fillmonth'){materialize();ui.toast=label(ui.sel)+' پڕ کرایەوە';change();return}
   if(e.target.closest('#toggleadd')){ui.showAdd=!ui.showAdd;render();var nn=document.getElementById('nname');if(nn)nn.focus();return}
   var d=e.target.closest('[data-del]');if(d){var id=d.dataset.del;
     if(ui.armed!==id){ui.armed=id;render();return}
@@ -291,15 +315,18 @@ document.addEventListener('change',function(e){
   var el=e.target;
   if(el.id==='msel'){ui.sel=el.value;ui.armed=null;render();return}
   if(el.id==='imp'&&ui.admin&&el.files[0]){var r=new FileReader();r.onload=function(){try{S=norm(JSON.parse(r.result));ui.sel=S.months[ymNow()]?ymNow():S.current;ui.toast='داتاکان هاوردە کران';change()}catch(x){ui.toast='فایلەکە دروست نییە';render()}};r.readAsText(el.files[0]);return}
+  if(el.id==='prev'&&ui.admin){S.prev=Math.max(0,+el.value||0);change();return}
   if(!ui.admin||el.dataset.ix==null)return;
   materialize();var it=S.months[ui.sel].items[+el.dataset.ix],f=el.dataset.f;
   if(f==='amount'){it.amount=Math.max(0,+el.value||0);var mm=S.members.find(function(x){return x.id===it.id});if(mm&&ui.sel===S.current)mm.amount=it.amount}
   else if(f==='date'){it.date=el.value}
-  else if(f==='paid'){it.paid=el.value==='1';if(it.paid&&!it.date)it.date=todayStr();if(!it.paid)it.date=''}
+  else if(f==='time'){it.time=el.value}
+  else if(f==='paid'){it.paid=el.value==='1';if(it.paid&&!it.date){it.date=todayStr();it.time=nowTime()}if(!it.paid){it.date='';it.time=''}}
   if(ui.sel===S.current)checkAdvance();
   change();
 });
 render();
+setInterval(function(){var c=document.getElementById('clock');if(c)c.textContent=clockText()},15000);
 })();
 </script>
 </body>
